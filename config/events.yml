@@ -1,0 +1,30 @@
+# Scheduled economic/policy events. Used by event-mode poller (week 3+)
+# to switch to dense polling around release windows.
+#
+# release_time_et is local Eastern Time; converted to UTC at runtime.
+
+events:
+  # 2026 FOMC meetings (all decisions release at 14:00 ET on the second day)
+  - type: FOMC
+    name: June 2026 FOMC Decision
+    date: 2026-06-17
+    release_time_et: "14:00"
+  - type: FOMC
+    name: July 2026 FOMC Decision
+    date: 2026-07-29
+    release_time_et: "14:00"
+  - type: FOMC
+    name: September 2026 FOMC Decision
+    date: 2026-09-16
+    release_time_et: "14:00"
+  - type: FOMC
+    name: October 2026 FOMC Decision
+    date: 2026-10-28
+    release_time_et: "14:00"
+  - type: FOMC
+    name: December 2026 FOMC Decision
+    date: 2026-12-09
+    release_time_et: "14:00"
+
+  # Economic data releases will be added in week 2.
+  # Sources: BLS (NFP, CPI), BEA (GDP, PCE).

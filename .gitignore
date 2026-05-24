@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Project
+# NOTE: data/observations.db IS intentionally committed back to the repo.
+# Raw FedWatch HTML snapshots are NOT.
+data/fedwatch_raw/
+data/*.tmp
+data/*.bak
+
+# Logs
+*.log

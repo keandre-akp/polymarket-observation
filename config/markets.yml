@@ -1,0 +1,30 @@
+# Tracked Polymarket events.
+#
+# Each entry references a Polymarket "event" (a question with N sub-markets).
+# The poller resolves event slug -> sub-markets at startup and inserts them
+# into the `markets` SQLite table. From then on it polls each sub-market.
+#
+# Adding a market: append an entry here. Removing one: set active: false
+# (do NOT delete -- we want the historical snapshots to remain queryable).
+
+events:
+  - slug: fed-decision-in-june-825
+    category: Fed
+    name: Fed Decision in June 2026
+    description: Multi-outcome on the June 16-17 FOMC decision
+    resolution_date: 2026-06-17
+    active: true
+
+  - slug: what-will-the-fed-rate-be-at-the-end-of-2026
+    category: Fed
+    name: Fed Rate at End of 2026
+    description: Multi-outcome on year-end Fed funds upper bound
+    resolution_date: 2026-12-31
+    active: true
+
+  - slug: how-many-fed-rate-cuts-in-2026
+    category: Fed
+    name: Fed Rate Cuts Count 2026
+    description: Multi-outcome on number of cuts in 2026
+    resolution_date: 2026-12-31
+    active: true

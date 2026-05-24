@@ -1,0 +1,2 @@
+# Keeps the data/ directory in the repo.
+# observations.db will be created here on first poll.

@@ -1,0 +1,59 @@
+name: poll-polymarket-hourly
+
+# Hourly poll of all active Polymarket markets in config/markets.yml.
+# Writes price snapshots to data/observations.db and commits the DB back
+# to the repo. Storage strategy is intentionally simple for the 60-day
+# observation window; migrate to Turso ~week 4.
+
+on:
+  schedule:
+    # Every hour, on the hour, UTC.
+    - cron: "0 * * * *"
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+# Prevent concurrent runs from racing the commit of observations.db.
+concurrency:
+  group: poll-polymarket
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # needed to commit the updated SQLite file
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Default token has push rights when permissions.contents=write.
+          # fetch-depth: 1 is fine — we don't need history to commit back.
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run poller
+        run: python -m src.poller
+
+      - name: Commit updated tape
+        run: |
+          if [[ -n "$(git status --porcelain data/observations.db)" ]]; then
+            git config user.name "polymarket-bot"
+            git config user.email "polymarket-bot@users.noreply.github.com"
+            git add data/observations.db
+            git commit -m "poll: $(date -u +%Y-%m-%dT%H:%MZ)"
+            # Retry once on push race — concurrent guard above should prevent this
+            # but networks are networks.
+            git push || (git pull --rebase && git push)
+          else
+            echo "No DB changes to commit."
+          fi
