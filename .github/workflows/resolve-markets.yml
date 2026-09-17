@@ -1,0 +1,76 @@
+name: resolve-markets
+
+# Hourly: capture any new Independent Reads from Notion (timestamped, no
+# backdating), log settled markets back to Notion, then score Brier.
+#
+# Hourly rather than daily because (a) settlement timing is not ours to
+# predict and (b) a forecast entered in Notion should be timestamped within
+# the hour, not the day. No-ops cheaply when nothing changed.
+
+on:
+  schedule:
+    - cron: "20 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Show what would be written without writing it"
+        type: boolean
+        default: false
+
+concurrency:
+  group: observations-db
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Capture forecasts from Notion
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            python -m src.forecasts capture --dry-run
+          else
+            python -m src.forecasts capture
+          fi
+
+      - name: Log resolutions
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            python -m src.resolve --dry-run
+          else
+            python -m src.resolve
+          fi
+
+      - name: Score Brier
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            python -m src.brier --report
+          else
+            python -m src.brier
+          fi
+
+      - name: Commit updated tape
+        if: always()
+        run: 'bash scripts/commit_tape.sh "resolve"'

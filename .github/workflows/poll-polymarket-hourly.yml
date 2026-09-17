@@ -7,13 +7,20 @@ name: poll-polymarket-hourly
 
 on:
   schedule:
-    # Every hour, on the hour, UTC.
+    # Every hour, on the hour, UTC -- plus :30. GitHub delays or drops scheduled
+    # runs under load (observed cadence Sep 2026: ~every 3-6h off a single hourly
+    # cron). Two triggers roughly double the chance of an hourly sample. The
+    # concurrency group below stops them racing each other.
     - cron: "0 * * * *"
+    - cron: "30 * * * *"
   workflow_dispatch: {}   # allow manual runs from the Actions tab
 
 # Prevent concurrent runs from racing the commit of observations.db.
+# NOTE: renamed from "poll-polymarket" in week 2. The three daily jobs
+# (fred, fedwatch, notion-sync) write this same file, so every workflow that
+# touches observations.db must share ONE group or they will race each other.
 concurrency:
-  group: poll-polymarket
+  group: observations-db
   cancel-in-progress: false
 
 permissions:

@@ -31,3 +31,8 @@ data/*.bak
 
 # Logs
 *.log
+
+# tooling
+.pytest_cache/
+# superseded staging dir (moved into .github/workflows on Sep 17); delete locally
+workflows-incoming/

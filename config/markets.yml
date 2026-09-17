@@ -6,25 +6,108 @@
 #
 # Adding a market: append an entry here. Removing one: set active: false
 # (do NOT delete -- we want the historical snapshots to remain queryable).
+#
+# `track:` marks which sub-market(s) belong in the Notion Observation Log.
+# Everything else on the board is still polled into the tape -- we want the
+# full board for context -- it just does not get a Notion row. A sub-market
+# with a notion_page_id is bound to the row that already exists in the log;
+# without one, the sync creates a new row on first run.
+#
+# Verify the bindings before syncing:  python -m src.notion_sync --link-report
 
 events:
+  # ---------------------------------------------------------------- observation phase, seeded Sep 9 2026
+  - slug: core-cpi-mom-august-2026-1786474662954
+    category: Economic
+    name: Core CPI MoM — August 2026
+    description: Bracketed board on August core CPI month-over-month
+    resolution_date: 2026-09-11
+    active: true
+    track:
+      - outcome: "0.2%"
+        notion_page_id: 3d7eea342aaf8181ac03d33263ed2a1e
+
+  - slug: core-cpi-yoy-august-2026-1786474662954
+    category: Economic
+    name: Core CPI YoY — August 2026
+    description: Bracketed board on August core CPI year-over-year
+    resolution_date: 2026-09-11
+    active: true
+    track:
+      - outcome: "2.4%"
+        notion_page_id: 3d7eea342aaf81ca9543f153f5664df3
+
+  - slug: fed-decision-in-september-762
+    category: Fed
+    name: Fed Decision — September 2026
+    description: Multi-outcome on the Sep 16 FOMC decision
+    resolution_date: 2026-09-16
+    active: true
+    track:
+      - outcome: "No change"
+        notion_page_id: 3d7eea342aaf810cbdd3c00d2647eec7
+
+  - slug: how-many-jobs-added-in-september-2026
+    category: Economic
+    name: September 2026 Jobs Report
+    description: Bracketed board on September nonfarm payrolls
+    resolution_date: 2026-10-02
+    active: true
+    track:
+      - outcome: "0-50k"
+        notion_page_id: 3d7eea342aaf81689a92f7c6d8cca35b
+
+  - slug: fed-rate-hike-by
+    category: Fed
+    name: Fed Rate Hike By
+    description: Cumulative board on when the next hike lands
+    resolution_date: 2026-10-28
+    active: true
+    track:
+      - outcome: "October"
+        notion_page_id: 3d7eea342aaf81ed91e7dd36fa95fb60
+
+  - slug: which-party-will-win-the-house-in-2026
+    category: Election
+    name: House Control — 2026 Midterms
+    description: Party control of the House after the 2026 midterms
+    resolution_date: 2026-11-03
+    active: true
+    track:
+      - outcome: "Democrat"
+        notion_page_id: 3d7eea342aaf81108980f4d63bad6c67
+
+  - slug: which-party-will-win-the-senate-in-2026
+    category: Election
+    name: Senate Control — 2026 Midterms
+    description: Party control of the Senate after the 2026 midterms
+    resolution_date: 2026-11-03
+    active: true
+    track:
+      - outcome: "Democrat"
+        notion_page_id: 3d7eea342aaf816ea9c9fa34c8ae1582
+
+  # ---------------------------------------------------------------- week-1 scaffold events
+  # Retired Sep 10 2026. The June FOMC has resolved and these were never part
+  # of the observation phase. Kept (not deleted) so their May snapshots stay
+  # queryable, per the rule at the top of this file.
   - slug: fed-decision-in-june-825
     category: Fed
     name: Fed Decision in June 2026
     description: Multi-outcome on the June 16-17 FOMC decision
     resolution_date: 2026-06-17
-    active: true
+    active: false
 
   - slug: what-will-the-fed-rate-be-at-the-end-of-2026
     category: Fed
     name: Fed Rate at End of 2026
     description: Multi-outcome on year-end Fed funds upper bound
     resolution_date: 2026-12-31
-    active: true
+    active: false
 
   - slug: how-many-fed-rate-cuts-in-2026
     category: Fed
     name: Fed Rate Cuts Count 2026
     description: Multi-outcome on number of cuts in 2026
     resolution_date: 2026-12-31
-    active: true
+    active: false

@@ -1,0 +1,64 @@
+name: health
+
+# Liveness + compliance alarm. Every 2 hours:
+#   - tape staleness   (newest snapshot older than 6h  -> fail)
+#   - forecast due     (tracked market resolves within 48h with no forecast -> fail)
+# A failure opens (or updates) a GitHub issue labelled `health`, which is the
+# notification channel -- no external service, no extra secret. When the check
+# passes again the issue is closed automatically.
+
+on:
+  schedule:
+    - cron: "45 */2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Run checks
+        id: health
+        continue-on-error: true
+        run: |
+          set +e
+          python -m src.health > health.txt 2>&1
+          code=$?
+          cat health.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Alarm via issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BODY="$(cat health.txt)"
+          EXISTING="$(gh issue list --label health --state open --json number --jq '.[0].number // empty')"
+          if [[ "${{ steps.health.outputs.code }}" != "0" ]]; then
+            gh label create health --color D93F0B --description "pipeline health alarm" 2>/dev/null || true
+            if [[ -z "$EXISTING" ]]; then
+              gh issue create --title "HEALTH ALARM: $(date -u +%Y-%m-%dT%H:%MZ)" --label health \
+                --body "$(printf 'Health check failed at %s\n\n```\n%s\n```\n\nThis issue is updated every 2h until the check passes.' "$(date -u)" "$BODY")"
+            else
+              gh issue comment "$EXISTING" --body "$(printf 'Still failing at %s\n\n```\n%s\n```' "$(date -u)" "$BODY")"
+            fi
+            exit 1
+          else
+            if [[ -n "$EXISTING" ]]; then
+              gh issue close "$EXISTING" --comment "$(printf 'Recovered at %s\n\n```\n%s\n```' "$(date -u)" "$BODY")"
+            fi
+          fi

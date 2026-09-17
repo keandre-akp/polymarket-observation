@@ -1,0 +1,64 @@
+name: notion-sync-daily
+
+# Reads the SQLite rollup and upserts one Notion page per tracked sub-market.
+# Runs last so it sees the day's FRED and FedWatch data.
+
+on:
+  schedule:
+    # 23:15 UTC = 19:15 ET, 30 minutes behind fedwatch-daily.
+    - cron: "15 23 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print payloads without writing to Notion"
+        type: boolean
+        default: false
+      force:
+        description: "Ignore the payload hash cache and rewrite every page"
+        type: boolean
+        default: false
+
+concurrency:
+  group: observations-db
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      # Catches a renamed column before it turns every page write into a 400.
+      - name: Verify the Notion schema
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: python -m src.notion_sync --verify-schema
+
+      - name: Sync to Notion
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          ARGS=""
+          [[ "${{ inputs.dry_run }}" == "true" ]] && ARGS="$ARGS --dry-run"
+          [[ "${{ inputs.force }}"   == "true" ]] && ARGS="$ARGS --force"
+          python -m src.notion_sync $ARGS
+
+      - name: Commit updated tape
+        if: always()
+        run: bash scripts/commit_tape.sh "notion-sync"

@@ -1,0 +1,99 @@
+name: fedwatch-daily
+
+# Scrapes the CME FedWatch probability grid with Playwright.
+# Raw HTML lands in data/fedwatch_raw/ before any parsing, so a CME layout
+# change costs a parser fix rather than a lost day. That directory is
+# gitignored, so snapshots are uploaded as build artifacts instead.
+
+on:
+  schedule:
+    # 22:45 UTC = 18:45 ET, after the 15:00 CT fed funds futures settlement
+    # and 15 minutes behind fred-daily.
+    - cron: "45 22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      reparse_all:
+        description: "Reparse saved snapshots instead of scraping"
+        type: boolean
+        default: false
+
+concurrency:
+  group: observations-db
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Scrape FedWatch
+        run: |
+          if [[ "${{ inputs.reparse_all }}" == "true" ]]; then
+            python -m src.fedwatch --reparse-all
+          else
+            python -m src.fedwatch
+          fi
+
+      # Snapshots are gitignored, so this is the only way to get at them
+      # when a parse fails.
+      - name: Upload raw snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fedwatch-snapshot-${{ github.run_id }}
+          path: data/fedwatch_raw/*.html
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fail the run if nothing was written today
+        run: |
+          python - <<'PY'
+          import sqlite3, sys
+          from datetime import datetime, timezone
+          today = datetime.now(timezone.utc).date().isoformat()
+          conn = sqlite3.connect("data/observations.db")
+          n = conn.execute(
+              "SELECT COUNT(*) FROM comparables "
+              "WHERE source = 'cme_fedwatch' AND timestamp LIKE ?",
+              (f"{today}%",),
+          ).fetchone()[0]
+          print(f"{n} cme_fedwatch rows for {today}")
+          if n == 0:
+              print("::error::FedWatch parse produced no rows. Download the "
+                    "snapshot artifact, then: python -m src.fedwatch "
+                    "--from-file <file> --dump-tables")
+              sys.exit(1)
+          PY
+
+      - name: Log divergence (market vs comparable)
+        run: python -m src.divergence
+
+      - name: Commit updated tape
+        if: always()
+        run: bash scripts/commit_tape.sh "fedwatch"

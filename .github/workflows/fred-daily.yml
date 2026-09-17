@@ -1,0 +1,58 @@
+name: fred-daily
+
+# Pulls DFF / DFEDTARU / DFEDTARL into the `comparables` table.
+# Runs first in the nightly chain: fedwatch-daily falls back to the target
+# range this job writes when it cannot read one off the CME page.
+
+on:
+  schedule:
+    # 22:30 UTC = 18:30 ET, after FRED's afternoon publish. Weekdays only —
+    # FRED does not publish on weekends.
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Pull ~2 years instead of the trailing window"
+        type: boolean
+        default: false
+
+# Shared with the other daily jobs AND poll-polymarket-hourly must not race
+# them, so everything that writes observations.db uses this one group.
+concurrency:
+  group: observations-db
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Pull FRED series
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          if [[ "${{ inputs.backfill }}" == "true" ]]; then
+            python -m src.fred --backfill
+          else
+            python -m src.fred
+          fi
+
+      - name: Commit updated tape
+        run: bash scripts/commit_tape.sh "fred"

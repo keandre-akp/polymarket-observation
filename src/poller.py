@@ -67,11 +67,13 @@ def _get_json(url: str, params: dict[str, Any] | None = None) -> Any:
 
 # ---------- Config loading ----------
 
-def load_market_config(path: Path = MARKETS_CONFIG) -> list[dict[str, Any]]:
-    """Return the list of event entries from config/markets.yml."""
+def load_market_config(path: Path = MARKETS_CONFIG, *, include_inactive: bool = False) -> list[dict[str, Any]]:
+    """Return the event entries from config/markets.yml (active only by default)."""
     with open(path) as f:
         data = yaml.safe_load(f)
     events = data.get("events", []) if data else []
+    if include_inactive:
+        return list(events)
     return [e for e in events if e.get("active", True)]
 
 
@@ -110,12 +112,36 @@ def _parse_token_ids(raw: Any) -> list[str]:
 
 # ---------- Discovery ----------
 
+def retire_inactive(conn, config_events: list[dict[str, Any]]) -> int:
+    """Set active=0 on every sub-market whose event is `active: false` in config.
+
+    discover() only ever upserted, so a retired event kept being polled forever
+    (the week-1 scaffold set was still live on the remote in September). Rows
+    are never deleted -- the rule at the top of markets.yml -- just switched off.
+    """
+    retired = 0
+    for cfg in config_events:
+        if cfg.get("active", True):
+            continue
+        cur = conn.execute(
+            "UPDATE markets SET active = 0 WHERE event_slug = ? AND active = 1",
+            (cfg["slug"],),
+        )
+        retired += cur.rowcount
+    if retired:
+        log.info("retired %d sub-market(s) from inactive events", retired)
+    return retired
+
+
 def discover() -> None:
     """Walk config and ensure every sub-market exists in SQLite."""
-    config_events = load_market_config()
+    config_events = load_market_config(include_inactive=True)
     db.init_db()
     with db.get_connection() as conn:
+        retire_inactive(conn, config_events)
         for cfg in config_events:
+            if not cfg.get("active", True):
+                continue
             slug = cfg["slug"]
             log.info("discovering event slug=%s", slug)
             try:

@@ -1,0 +1,70 @@
+<!-- frame: https://cmegroup-tools.quikstrike.net/User/QuikStrikeTools.aspx?viewitemid=IntegratedFedWatchTool -->
+<html>
+<head><title>CME FedWatch Tool</title></head>
+<body>
+<div id="ctl00_MainContent_ucViewControl_IntegratedFedWatchTool_pnlHeader">
+  <h2>Target Rate Probabilities for Upcoming FOMC Meetings</h2>
+  <span class="quikstrike-asof">Data as of 04 Aug 2026</span>
+</div>
+
+<!-- Decoy: a layout table with no probability content. The parser must skip it. -->
+<table class="qs-nav">
+  <tr><td>Probabilities</td><td>Historical</td><td>Dot Plot</td></tr>
+</table>
+
+<!-- Decoy: current target range summary, two columns, no percentages. -->
+<table id="ctl00_MainContent_tblCurrent">
+  <tr><th>Current Target Rate</th><th>Effective Rate</th></tr>
+  <tr><td>375-400</td><td>3.88</td></tr>
+</table>
+
+<!-- The real grid. -->
+<table id="ctl00_MainContent_ucViewControl_IntegratedFedWatchTool_gvProbabilities"
+       class="qs-datatable">
+  <thead>
+    <tr>
+      <th>MEETING DATE</th>
+      <th>275-300</th>
+      <th>300-325</th>
+      <th>325-350</th>
+      <th>350-375</th>
+      <th>375-400</th>
+      <th>400-425</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>16 Sep 2026</td>
+      <td>0.0%</td>
+      <td>0.0%</td>
+      <td>0.0%</td>
+      <td>62.4%</td>
+      <td>35.1%</td>
+      <td>2.5%</td>
+    </tr>
+    <tr>
+      <td>28 Oct 2026</td>
+      <td>0.0%</td>
+      <td>0.0%</td>
+      <td>18.9%</td>
+      <td>48.2%</td>
+      <td>30.4%</td>
+      <td>2.5%</td>
+    </tr>
+    <tr>
+      <td>09 Dec 2026</td>
+      <td>0.0%</td>
+      <td>7.3%</td>
+      <td>29.6%</td>
+      <td>41.0%</td>
+      <td>20.0%</td>
+      <td>2.1%</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="qs-footer">
+  <p>Probabilities are derived from 30-Day Fed Funds futures prices.</p>
+</div>
+</body>
+</html>

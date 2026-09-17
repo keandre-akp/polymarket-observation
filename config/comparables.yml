@@ -1,0 +1,90 @@
+# Week 2 comparable data sources and the Notion sync.
+#
+# Same spirit as markets.yml: anything you might want to change without
+# touching Python lives here. Secrets do NOT live here -- they come from the
+# environment (FRED_API_KEY, NOTION_API_KEY).
+
+fred:
+  # Series written to the `comparables` table with source = "fred".
+  #   DFF       effective federal funds rate
+  #   DFEDTARU  target range, upper limit
+  #   DFEDTARL  target range, lower limit
+  series:
+    - DFF
+    - DFEDTARU
+    - DFEDTARL
+  # FRED publishes with a lag and revises. Asking only for "today" gives an
+  # empty response most mornings, so re-request a trailing window each run and
+  # skip anything already on the tape.
+  lookback_days: 14
+  backfill_days: 730
+
+fedwatch:
+  # Load the CME page, NOT the QuikStrike URL. QuikStrike runs a referrer
+  # check and answers a direct hit with "Access to QuikStrike has been denied
+  # - unexpected null referrer". Confirmed against the live site 2026-08-05.
+  page_url: https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html
+  # Kept for reference only -- reachable solely with a cmegroup.com referrer.
+  tool_url: https://cmegroup-tools.quikstrike.net/User/QuikStrikeTools.aspx?viewitemid=IntegratedFedWatchTool
+  timeout_ms: 60000
+  # The default view shows one meeting at a time; the scraper walks the tab
+  # strip. ~10 tabs are offered, covering roughly 14 months forward.
+  max_meetings: 10
+  # Raw HTML snapshots. .gitignore already excludes data/fedwatch_raw/, so
+  # these stay local; CI uploads them as build artifacts instead.
+  raw_dir: data/fedwatch_raw
+  raw_retention_days: 180
+
+notion:
+  database_id: cc294ab1-ffc0-4534-95c1-613863c0c00e
+  # 2022-06-28 keeps `parent: {database_id: ...}` working. Later versions
+  # (2025-09-03+) replace database parents with data-source parents -- do not
+  # bump without re-reading src/notion_sync.py.
+  api_version: "2022-06-28"
+
+  # Properties the sync is allowed to write. Everything else in the Observation
+  # Log is yours and must survive every sync untouched.
+  system_properties:
+    - Market
+    - Category
+    - Polymarket URL
+    - Open Date
+    - Resolution Date
+    - Opening Probability
+    - Mid-Period Probability
+    - Closing Probability
+    - Comparable Probability
+    - Comparable Source
+    - Actual Outcome
+  user_properties:
+    - My Independent Read
+    - Edge Call
+    - Hypothetical P&L
+    - Notes
+
+  # How a sub-market's outcome_name maps onto a FedWatch direction series.
+  # Matched case-insensitively, first hit wins, against outcome_name then
+  # question. Sub-markets that match nothing sync with no comparable.
+  outcome_direction_map:
+    - match: ["no change", "no cut", "unchanged", "hold"]
+      direction: HOLD
+    - match: ["decrease", "cut", "lower", "ease"]
+      direction: CUT
+    - match: ["increase", "hike", "raise"]
+      direction: HIKE
+
+resolution:
+  # Paper stake used for Hypothetical P&L when a market settles.
+  #
+  # $25 matches the "Hypothetical P&L" property description in the Notion
+  # Observation Log ("what $25 stake would have returned based on your read").
+  # The Sep 9 handoff said $100; settled on $25 on Sep 10 so the schema and the
+  # code agree. If you change it, change the Notion property description too --
+  # a stake the log describes but does not use is worse than either number.
+  paper_stake: 25
+
+  # A market Polymarket has closed is only treated as settled once its YES price
+  # has gone to an extreme. Between these bounds it is closed-but-unsettled and
+  # gets left alone until the next run.
+  settled_high: 0.99
+  settled_low: 0.01
