@@ -45,7 +45,7 @@ def _seed(c):
         "Will the Fed increase interest rates by 25 bps after the September 2026 meeting?",
         "25 bps increase", "2026-09-16")
     _mk(c, JOBS, "how-many-jobs-added-in-september-2026", "September 2026 Jobs Report", "Economic",
-        "Will 0-50k jobs be added in September 2026?", "0-50k", "2026-10-02")
+        "Will the US add between 0 and 50k jobs in September?", "0 to 50k", "2026-10-02")
     # Fed "No change": drifts from 0.40 on Sep 12 to 0.05 before settling NO.
     for ts, p in [("2026-09-12T12:00:00Z", 0.40), ("2026-09-14T12:00:00Z", 0.30),
                   ("2026-09-15T12:00:00Z", 0.12), ("2026-09-16T17:00:00Z", 0.05),
@@ -354,3 +354,72 @@ def test_run_reads_page_before_update_and_never_clobbers(conn, monkeypatch):
         assert k not in props, f"{k} would have been overwritten"
     assert "Mid-Period Probability" in props
     assert "Market" in props
+
+
+# --------------------------------------------------------------------------
+# poller: closed markets retire on discovery; empty books are not prices
+# --------------------------------------------------------------------------
+
+def test_discover_retires_closed_submarkets_and_keeps_open_ones(conn, monkeypatch):
+    event = {"markets": [
+        {"conditionId": "0xopen",   "clobTokenIds": '["y1","n1"]', "question": "open q",
+         "groupItemTitle": "A", "closed": False},
+        {"conditionId": "0xclosed", "clobTokenIds": '["y2","n2"]', "question": "closed q",
+         "groupItemTitle": "B", "closed": True},
+    ]}
+    monkeypatch.setattr(poller, "fetch_event_by_slug", lambda slug: event)
+    monkeypatch.setattr(poller, "load_market_config", lambda *a, **k: [
+        {"slug": "e1", "name": "E1", "category": "Fed", "resolution_date": "2026-12-31", "active": True}])
+    conn.commit()
+    poller.discover()
+    with db.get_connection() as c:
+        active = {m["market_id"] for m in db.get_active_markets(c)}
+        assert "0xopen" in active
+        assert "0xclosed" not in active
+        assert c.execute("SELECT COUNT(*) FROM markets WHERE market_id='0xclosed'").fetchone()[0] == 0, \
+            "a closed market seen for the first time should not be inserted at all"
+
+
+def test_discover_retires_previously_active_market_once_closed(conn, monkeypatch):
+    # JOBS is active in the fixture; Gamma now says it is closed.
+    event = {"markets": [{"conditionId": JOBS, "clobTokenIds": '["y","n"]',
+                          "question": "jobs", "groupItemTitle": "0 to 50k", "closed": True}]}
+    monkeypatch.setattr(poller, "fetch_event_by_slug", lambda slug: event)
+    monkeypatch.setattr(poller, "load_market_config", lambda *a, **k: [
+        {"slug": "how-many-jobs-added-in-september-2026", "name": "J", "category": "Economic",
+         "resolution_date": "2026-10-02", "active": True}])
+    conn.commit()
+    poller.discover()
+    with db.get_connection() as c:
+        assert JOBS not in {m["market_id"] for m in db.get_active_markets(c)}
+
+
+def test_poll_skips_snapshot_when_book_is_empty(conn, monkeypatch):
+    monkeypatch.setattr(poller, "_fetch_midpoint", lambda tok: 0.5)
+    monkeypatch.setattr(poller, "_fetch_book_bid_ask",
+                        lambda tok: (None, None) if tok == "y" else (0.24, 0.26))
+    # give OTHER a distinct token so one market has a book and the others do not
+    conn.execute("UPDATE markets SET yes_token_id='z' WHERE market_id=?", (OTHER,))
+    conn.commit()
+    before = conn.execute("SELECT COUNT(*) FROM price_snapshots").fetchone()[0]
+    written = poller.poll()
+    with db.get_connection() as c:
+        after = c.execute("SELECT COUNT(*) FROM price_snapshots").fetchone()[0]
+    assert written == 1 and after == before + 1
+    with db.get_connection() as c:
+        row = c.execute("SELECT market_id, yes_bid, yes_ask FROM price_snapshots "
+                        "ORDER BY snapshot_id DESC LIMIT 1").fetchone()
+        assert row["market_id"] == OTHER and row["yes_bid"] == 0.24
+
+
+def test_jobs_track_rule_matches_live_label():
+    """The live board labels the bracket '0 to 50k'; the rule must hit it."""
+    rules = [r for r in notion_sync.tracked_config()
+             if r["event_slug"] == "how-many-jobs-added-in-september-2026"]
+    assert len(rules) == 1
+    row = {"event_slug": "how-many-jobs-added-in-september-2026", "outcome_name": "0 to 50k",
+           "question": "Will the US add between 0 and 50k jobs in September?"}
+    assert notion_sync.match_tracked(row, rules) is not None
+    wrong = {"event_slug": "how-many-jobs-added-in-september-2026", "outcome_name": "50k to 100k",
+             "question": "Will the US add between 50k and 100k jobs in September?"}
+    assert notion_sync.match_tracked(wrong, rules) is None

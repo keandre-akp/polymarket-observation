@@ -54,7 +54,9 @@ events:
     resolution_date: 2026-10-02
     active: true
     track:
-      - outcome: "0-50k"
+      # Live label is "0 to 50k" (confirmed on the tape 2026-09-17). "0-50k"
+      # normalises to "050k", which is not a substring of "0to50k" -- MISS.
+      - outcome: "0 to 50k"
         notion_page_id: 3d7eea342aaf81689a92f7c6d8cca35b
 
   - slug: fed-rate-hike-by

@@ -174,6 +174,14 @@ def discover() -> None:
                     if outcomes and outcomes[0] not in ("Yes", "No"):
                         outcome_name = outcomes[0]
 
+                # Gamma marks settled sub-markets closed. CLOB returns no
+                # midpoint for them, so polling is a wasted call per hour per
+                # market -- 41 of 52 on the first live run. Retire on sight.
+                if m.get("closed") is True:
+                    db.set_market_active(conn, str(condition_id), False)
+                    log.info("  closed on Gamma, retiring: %s", m.get("question", "")[:60])
+                    continue
+
                 db.upsert_market(
                     conn,
                     market_id=str(condition_id),
@@ -245,6 +253,11 @@ def poll(mode: str = "routine") -> int:
                 log.warning("no midpoint for %s (%s) -- skipping snapshot", m["market_id"], m["question"])
                 continue
             bid, ask = _fetch_book_bid_ask(m["yes_token_id"])
+            if bid is None and ask is None:
+                # CLOB answers 0.5 for a token with no orders on either side.
+                # That is the absence of a market, not a price at 50%.
+                log.warning("empty book for %s (%s) -- skipping snapshot", m["market_id"][:12], m["question"][:50])
+                continue
             db.save_price_snapshot(
                 conn,
                 market_id=m["market_id"],
