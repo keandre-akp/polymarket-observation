@@ -36,7 +36,10 @@ fedwatch:
   raw_retention_days: 180
 
 notion:
-  database_id: cc294ab1-ffc0-4534-95c1-613863c0c00e
+  # The DATABASE id (bf99f8b1...), not the data-source id (cc294ab1...). API
+  # 2022-06-28 resolves /databases/{id} by database id; the data-source id 404s
+  # and verify-schema reports every property MISSING (notion-sync-daily #1-#5).
+  database_id: bf99f8b1-f4d1-4437-85d3-86ca0e1f87b2
   # 2022-06-28 keeps `parent: {database_id: ...}` working. Later versions
   # (2025-09-03+) replace database parents with data-source parents -- do not
   # bump without re-reading src/notion_sync.py.
