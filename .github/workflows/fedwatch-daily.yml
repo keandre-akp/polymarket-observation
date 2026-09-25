@@ -54,10 +54,16 @@ jobs:
 
       - name: Scrape FedWatch
         run: |
+          # cmegroup.com answers headless Chromium's HTTP/2 handshake with
+          # net::ERR_HTTP2_PROTOCOL_ERROR (confirmed: fails identically with
+          # --headless=new, --disable-http2, and extra browser-like headers;
+          # succeeds immediately in headed mode). Ubuntu Actions runners ship
+          # Xvfb, so run headed under a virtual display instead of chasing
+          # the headless block further.
           if [[ "${{ inputs.reparse_all }}" == "true" ]]; then
             python -m src.fedwatch --reparse-all
           else
-            python -m src.fedwatch
+            xvfb-run -a python -m src.fedwatch --headed
           fi
 
       # Snapshots are gitignored, so this is the only way to get at them
