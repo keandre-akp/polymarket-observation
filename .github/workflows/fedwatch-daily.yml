@@ -6,10 +6,17 @@ name: fedwatch-daily
 # gitignored, so snapshots are uploaded as build artifacts instead.
 
 on:
-  schedule:
-    # 22:45 UTC = 18:45 ET, after the 15:00 CT fed funds futures settlement
-    # and 15 minutes behind fred-daily.
-    - cron: "45 22 * * 1-5"
+  # Scheduled trigger disabled: CME blocks the Actions runner at the protocol
+  # level (net::ERR_HTTP2_PROTOCOL_ERROR on goto), a site-side block, not a
+  # scraper bug -- confirmed failing identically headless, --disable-http2,
+  # and with extra headers. Daily cron was failing every weekday with no
+  # actionable fix available server-side. See the proposal to replace
+  # cme_fedwatch with Kalshi's public FOMC market API as the comparable
+  # (docs/kalshi-fedwatch-replacement-proposal.md) before re-enabling.
+  # schedule:
+  #   # 22:45 UTC = 18:45 ET, after the 15:00 CT fed funds futures settlement
+  #   # and 15 minutes behind fred-daily.
+  #   - cron: "45 22 * * 1-5"
   workflow_dispatch:
     inputs:
       reparse_all:
