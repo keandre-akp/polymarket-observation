@@ -6,10 +6,6 @@ name: fedwatch-daily
 # gitignored, so snapshots are uploaded as build artifacts instead.
 
 on:
-  schedule:
-    # 22:45 UTC = 18:45 ET, after the 15:00 CT fed funds futures settlement
-    # and 15 minutes behind fred-daily.
-    - cron: "45 22 * * 1-5"
   workflow_dispatch:
     inputs:
       reparse_all:
