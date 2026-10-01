@@ -240,6 +240,36 @@ def test_staleness_fresh_and_stale(conn):
     assert not health.check_staleness(conn, now=NOW)["ok"]
 
 
+def test_fedwatch_staleness_empty_fresh_and_stale(conn):
+    # Nothing in comparables yet -> stale, with explicit "no rows" message.
+    empty = health.check_fedwatch_staleness(conn, now=NOW)
+    assert not empty["ok"]
+    assert empty["last_fedwatch"] is None
+    assert "no cme_fedwatch rows" in empty["message"]
+
+    # One row written 12h before NOW -> fresh at 36h limit.
+    db.save_comparable(conn, source="cme_fedwatch", series_id="FOMC:2026-09-16:HOLD",
+                       value=0.5, timestamp="2026-09-14T06:00:00Z")
+    fresh = health.check_fedwatch_staleness(conn, now=NOW)
+    assert fresh["ok"] and fresh["age_hours"] == 12.0
+
+    # Same row, now evaluated 37h later -> stale.
+    stale = health.check_fedwatch_staleness(conn, now="2026-09-15T19:00:00Z")
+    assert not stale["ok"]
+    assert stale["age_hours"] == 37.0
+    assert "FEDWATCH STALE" in stale["message"]
+
+    # Narrower window: 11h limit means the 12h-old row is stale.
+    tight = health.check_fedwatch_staleness(conn, now=NOW, max_age_hours=11.0)
+    assert not tight["ok"]
+
+    # A different source does not count as fresh fedwatch.
+    conn.execute("DELETE FROM comparables")
+    db.save_comparable(conn, source="fred", series_id="DFF", value=4.33,
+                       timestamp="2026-09-14T17:30:00Z")
+    assert not health.check_fedwatch_staleness(conn, now=NOW)["ok"]
+
+
 def test_forecast_due_fires_inside_window_and_clears_when_logged(conn):
     # Sep 14 18:00 -> Fed resolves end of Sep 16 = 54h away: outside 48h window.
     assert health.check_forecast_due(conn, now=NOW, forecaster="ke")["ok"]

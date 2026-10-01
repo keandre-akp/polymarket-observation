@@ -1,10 +1,17 @@
 """Liveness and compliance checks. Exit non-zero on any failure so CI can alarm.
 
-Two checks, both born from a failure that already happened:
+Three checks, each born from a failure that already happened:
 
 * **staleness** -- the tape once went unwatched for months (the local clone
   was stale; nobody noticed). Fail if the newest price snapshot is older than
   ``--max-age-hours`` (default 6).
+
+* **fedwatch-staleness** -- after disabling the CME scrape in Actions and
+  moving it to Ke's Mac, FedWatch comparables silently stopped on days the
+  Mac was off. The general tape-staleness alarm did not fire because the
+  Polymarket poller kept the DB fresh. Fail if the newest ``cme_fedwatch``
+  row in ``comparables`` is older than ``--fedwatch-max-age-hours``
+  (default 36 -- one day plus a slack buffer for weekends and overnight).
 
 * **forecast-due** (Amendment A7) -- three of the first four scoreable markets
   were lost because the read was not entered before the event. Fail if any
@@ -14,8 +21,9 @@ Two checks, both born from a failure that already happened:
 
 Usage
 -----
-    python -m src.health                    # both checks
+    python -m src.health                           # all checks
     python -m src.health --check staleness
+    python -m src.health --check fedwatch-staleness
     python -m src.health --check forecast-due
 """
 from __future__ import annotations
@@ -49,6 +57,33 @@ def check_staleness(conn: sqlite3.Connection, *, max_age_hours: float = 6.0,
         "ok": ok, "last_snapshot": last, "age_hours": round(age, 2),
         "message": (f"tape fresh: last snapshot {last} ({age:.1f}h ago)" if ok
                     else f"TAPE STALE: last snapshot {last} is {age:.1f}h old (limit {max_age_hours}h)"),
+    }
+
+
+def check_fedwatch_staleness(conn: sqlite3.Connection, *,
+                             max_age_hours: float = 36.0,
+                             now: str | None = None) -> dict[str, Any]:
+    """Fire if comparables holds no fresh cme_fedwatch row.
+
+    36h is one business day plus a slack buffer -- a Mac-off overnight does
+    not alarm, a Mac-off for two days does.
+    """
+    now_dt = _parse(now or db.utcnow_iso())
+    row = conn.execute(
+        "SELECT MAX(timestamp) AS ts FROM comparables WHERE source = 'cme_fedwatch'"
+    ).fetchone()
+    last = row["ts"] if row else None
+    if not last:
+        return {"ok": False, "last_fedwatch": None, "age_hours": None,
+                "message": "no cme_fedwatch rows in comparables at all"}
+    age = (now_dt - _parse(last)).total_seconds() / 3600.0
+    ok = age <= max_age_hours
+    return {
+        "ok": ok, "last_fedwatch": last, "age_hours": round(age, 2),
+        "message": (f"fedwatch fresh: last row {last} ({age:.1f}h ago)" if ok
+                    else f"FEDWATCH STALE: last cme_fedwatch row {last} is "
+                         f"{age:.1f}h old (limit {max_age_hours}h). "
+                         f"Local scrape probably missed a day."),
     }
 
 
@@ -90,8 +125,10 @@ def check_forecast_due(conn: sqlite3.Connection, *, horizon_hours: float = 48.0,
 def _main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     ap = argparse.ArgumentParser(prog="python -m src.health")
-    ap.add_argument("--check", choices=["all", "staleness", "forecast-due"], default="all")
+    ap.add_argument("--check", choices=["all", "staleness", "fedwatch-staleness",
+                                        "forecast-due"], default="all")
     ap.add_argument("--max-age-hours", type=float, default=6.0)
+    ap.add_argument("--fedwatch-max-age-hours", type=float, default=36.0)
     ap.add_argument("--horizon-hours", type=float, default=48.0)
     ap.add_argument("--forecaster", default=forecasts.DEFAULT_FORECASTER)
     args = ap.parse_args()
@@ -102,6 +139,11 @@ def _main() -> None:
         forecasts.init(conn)
         if args.check in ("all", "staleness"):
             r = check_staleness(conn, max_age_hours=args.max_age_hours)
+            print(r["message"])
+            if not r["ok"]:
+                failures.append(r["message"])
+        if args.check in ("all", "fedwatch-staleness"):
+            r = check_fedwatch_staleness(conn, max_age_hours=args.fedwatch_max_age_hours)
             print(r["message"])
             if not r["ok"]:
                 failures.append(r["message"])
