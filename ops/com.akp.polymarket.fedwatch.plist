@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job that runs the local FedWatch scrape daily at 15:30 local time
+  (shortly after US cash-equity close; matches the retired Actions cadence
+  that used 22:45 UTC = 15:45 PT winter / 14:45 PDT summer).
+
+  Weekdays only (Mon=1 ... Fri=5). FedWatch has no new data on weekends.
+
+  Install:
+      cp ops/com.akp.polymarket.fedwatch.plist ~/Library/LaunchAgents/
+      launchctl load   ~/Library/LaunchAgents/com.akp.polymarket.fedwatch.plist
+      launchctl start  com.akp.polymarket.fedwatch        # force a run now to verify
+
+  Inspect:
+      launchctl list | grep akp.polymarket
+      tail -f /tmp/akp-polymarket-fedwatch.log
+
+  Uninstall:
+      launchctl unload ~/Library/LaunchAgents/com.akp.polymarket.fedwatch.plist
+      rm              ~/Library/LaunchAgents/com.akp.polymarket.fedwatch.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.akp.polymarket.fedwatch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/keandrefoster/Polymarket/ops/fedwatch_daily.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/keandrefoster/Polymarket</string>
+
+  <!-- Mon-Fri at 15:30 local time. launchd handles DST correctly. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Weekday</key><integer>1</integer>
+      <key>Hour</key><integer>15</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>2</integer>
+      <key>Hour</key><integer>15</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>3</integer>
+      <key>Hour</key><integer>15</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>4</integer>
+      <key>Hour</key><integer>15</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>5</integer>
+      <key>Hour</key><integer>15</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+  </array>
+
+  <!-- If the Mac was asleep at 15:30, run as soon as it wakes. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Keep process logs separately from the wrapper's own log. -->
+  <key>StandardOutPath</key>
+  <string>/tmp/akp-polymarket-fedwatch.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/akp-polymarket-fedwatch.err</string>
+
+  <!-- Needed so git/ssh can find the user's keychain and SSH agent. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/keandrefoster</string>
+  </dict>
+</dict>
+</plist>

@@ -532,7 +532,12 @@ def capture_snapshot(*, headed: bool = False, url: str | None = None) -> tuple[s
 
     chunks: list[str] = []
     with sync_playwright() as pw:
+        # channel="chrome" uses the user's installed Chrome rather than Playwright's
+        # bundled chromium. CME TLS/JA3-fingerprints the connection and rejects the
+        # bundled chromium with ERR_HTTP2_PROTOCOL_ERROR even from a residential IP;
+        # real Chrome's fingerprint gets through. Confirmed on Ke's Mac 2026-09-30.
         browser = pw.chromium.launch(
+            channel="chrome",
             headless=not headed,
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
         )
