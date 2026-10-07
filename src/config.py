@@ -14,8 +14,38 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPARABLES_CONFIG = REPO_ROOT / "config" / "comparables.yml"
+DOTENV_PATH = REPO_ROOT / ".env"
 
 _cache: dict[str, Any] | None = None
+_dotenv_loaded = False
+
+
+def _load_dotenv() -> None:
+    """Populate os.environ from .env for any key not already set.
+
+    CI sets secrets as real environment variables, so this is a no-op there.
+    Locally (manual runs, the Hermes cron) there is no shell export step, so
+    .env is the only place NOTION_API_KEY / FRED_API_KEY live -- without this,
+    require_env() fails even though the key is sitting right there in the
+    repo root. Never overwrites an already-set env var. No third-party
+    dependency: the format here is just KEY=VALUE, one per line, # comments
+    and blank lines skipped.
+    """
+    global _dotenv_loaded
+    if _dotenv_loaded:
+        return
+    _dotenv_loaded = True
+    if not DOTENV_PATH.exists():
+        return
+    for line in DOTENV_PATH.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def load(path: Path = COMPARABLES_CONFIG) -> dict[str, Any]:
@@ -43,6 +73,7 @@ def resolve_path(value: str) -> Path:
 
 def require_env(name: str) -> str:
     """Fail loudly and early when a secret is missing."""
+    _load_dotenv()
     value = os.environ.get(name, "")
     if not value:
         raise SystemExit(
