@@ -10,8 +10,8 @@ Three checks, each born from a failure that already happened:
   moving it to Ke's Mac, FedWatch comparables silently stopped on days the
   Mac was off. The general tape-staleness alarm did not fire because the
   Polymarket poller kept the DB fresh. Fail if the newest ``cme_fedwatch``
-  row in ``comparables`` is older than ``--fedwatch-max-age-hours``
-  (default 36 -- one day plus a slack buffer for weekends and overnight).
+  row's observation *date* (not scrape time -- see ``check_fedwatch_staleness``)
+  is older than the last required business day.
 
 * **forecast-due** (Amendment A7) -- three of the first four scoreable markets
   were lost because the read was not entered before the event. Fail if any
@@ -60,13 +60,40 @@ def check_staleness(conn: sqlite3.Connection, *, max_age_hours: float = 6.0,
     }
 
 
+def _prev_business_day(d):
+    """Most recent weekday on or before ``d`` whose data should already exist.
+
+    Weekdays (Mon-Fri): the day before. Saturday: Friday (1 day back).
+    Sunday: Friday (2 days back). Monday: Friday (3 days back). This is the
+    "last required business day" -- data no older than this is on schedule.
+    """
+    wd = d.weekday()  # Mon=0 .. Sun=6
+    if wd == 0:        # Monday -> Friday
+        return d - timedelta(days=3)
+    if wd == 6:        # Sunday -> Friday
+        return d - timedelta(days=2)
+    return d - timedelta(days=1)  # Tue-Sat -> previous day
+
+
 def check_fedwatch_staleness(conn: sqlite3.Connection, *,
                              max_age_hours: float = 36.0,
                              now: str | None = None) -> dict[str, Any]:
-    """Fire if comparables holds no fresh cme_fedwatch row.
+    """Fire if comparables holds no cme_fedwatch row from the last required
+    business day (or today).
 
-    36h is one business day plus a slack buffer -- a Mac-off overnight does
-    not alarm, a Mac-off for two days does.
+    ``src.fedwatch`` deliberately stamps every row at midnight UTC of the
+    *observation date*, not the real scrape time -- that is the idempotency
+    key (``save_comparable`` upserts on (source, series_id, timestamp), one
+    row per calendar day). Comparing that date-stamp against ``now`` as a
+    real timestamp made this check fire every weekday afternoon once the
+    hours-since-midnight crossed the limit, even right after a same-day
+    scrape had already run cleanly -- a false alarm, not a real outage.
+    Compare calendar dates (business-day aware) instead: fresh if the
+    newest row's date is today or the last required business day (Friday's
+    row stays fresh all weekend; a genuine missed weekday is not).
+
+    ``max_age_hours`` is kept for CLI/API compatibility and reported back,
+    but no longer drives the pass/fail decision -- see ``ok``.
     """
     now_dt = _parse(now or db.utcnow_iso())
     row = conn.execute(
@@ -77,13 +104,17 @@ def check_fedwatch_staleness(conn: sqlite3.Connection, *,
         return {"ok": False, "last_fedwatch": None, "age_hours": None,
                 "message": "no cme_fedwatch rows in comparables at all"}
     age = (now_dt - _parse(last)).total_seconds() / 3600.0
-    ok = age <= max_age_hours
+    last_date = _parse(last).date()
+    today = now_dt.date()
+    required = _prev_business_day(today)
+    ok = last_date >= required
     return {
         "ok": ok, "last_fedwatch": last, "age_hours": round(age, 2),
         "message": (f"fedwatch fresh: last row {last} ({age:.1f}h ago)" if ok
                     else f"FEDWATCH STALE: last cme_fedwatch row {last} is "
-                         f"{age:.1f}h old (limit {max_age_hours}h). "
-                         f"Local scrape probably missed a day."),
+                         f"{age:.1f}h old, older than the last required "
+                         f"business day ({required}). Local scrape probably "
+                         f"missed a day."),
     }
 
 
