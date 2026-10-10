@@ -247,21 +247,28 @@ def test_fedwatch_staleness_empty_fresh_and_stale(conn):
     assert empty["last_fedwatch"] is None
     assert "no cme_fedwatch rows" in empty["message"]
 
-    # One row written 12h before NOW -> fresh at 36h limit.
+    # NOW is Monday 2026-09-14 18:00Z. A row from earlier the same day is
+    # fresh (today always counts, regardless of raw hour math).
     db.save_comparable(conn, source="cme_fedwatch", series_id="FOMC:2026-09-16:HOLD",
                        value=0.5, timestamp="2026-09-14T06:00:00Z")
     fresh = health.check_fedwatch_staleness(conn, now=NOW)
     assert fresh["ok"] and fresh["age_hours"] == 12.0
 
-    # Same row, now evaluated 37h later -> stale.
-    stale = health.check_fedwatch_staleness(conn, now="2026-09-15T19:00:00Z")
-    assert not stale["ok"]
-    assert stale["age_hours"] == 37.0
-    assert "FEDWATCH STALE" in stale["message"]
+    # Same Monday row, evaluated Tuesday 19:00Z: Monday is still the last
+    # required business day relative to Tuesday (today's own scrape may not
+    # have fired yet) -- calendar-day fresh, even though raw hours (37h) are
+    # past the old 36h limit. This is the fix: src.fedwatch stamps every row
+    # at midnight UTC of the observation date, so comparing raw hours against
+    # "now" fired false alarms every weekday afternoon.
+    still_fresh = health.check_fedwatch_staleness(conn, now="2026-09-15T19:00:00Z")
+    assert still_fresh["ok"]
+    assert still_fresh["age_hours"] == 37.0
 
-    # Narrower window: 11h limit means the 12h-old row is stale.
-    tight = health.check_fedwatch_staleness(conn, now=NOW, max_age_hours=11.0)
-    assert not tight["ok"]
+    # Evaluated Wednesday: Monday's row is now older than the last required
+    # business day (Tuesday) -- a real missed day, genuinely stale.
+    stale = health.check_fedwatch_staleness(conn, now="2026-09-16T12:00:00Z")
+    assert not stale["ok"]
+    assert "FEDWATCH STALE" in stale["message"]
 
     # A different source does not count as fresh fedwatch.
     conn.execute("DELETE FROM comparables")
