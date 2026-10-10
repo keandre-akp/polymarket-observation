@@ -28,6 +28,7 @@ Thumbs.db
 data/fedwatch_raw/
 data/*.tmp
 data/*.bak
+ops/.notion_watch_state.json
 
 # Logs
 *.log
